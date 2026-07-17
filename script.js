@@ -1,5 +1,5 @@
 const EXAMPLES = [
-  { label: "hello", code: 'fn main() {\n    print("Hello, Wyrm!")\n}' },
+  { label: "hello", code: 'fn main() {\n    print("Hello World")\n}' },
   { label: "if/elif", code: 'fn main() {\n    x = 7\n    if x > 10 {\n        print("big")\n    } elif x > 5 {\n        print("medium")\n    } else {\n        print("small")\n    }\n}' },
   { label: "repeat/til", code: 'fn main() {\n    i = 0\n    repeat {\n        print(i)\n        i = i + 1\n    } til (i == 5)\n}' },
   { label: "arrays", code: 'fn main() {\n    nums = [10, 20, 30]\n    print(nums[1])\n    print(len(nums))\n}' },
@@ -125,7 +125,7 @@ def run_wyrm_source(code):
     inputEl.disabled = false;
     runBtn.disabled = false;
     outputEl.innerHTML = '';
-    appendLine('พร้อมใช้งาน — กด Run เพื่อรันโค้ด (Ctrl/Cmd+Enter)', 'sys');
+    appendLine('พร้อมใช้งาน - กด Run เพื่อรันโค้ด (Ctrl/Cmd+Enter)', 'sys');
 
     return pyodide;
   } catch (e) {
