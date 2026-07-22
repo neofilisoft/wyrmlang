@@ -1,5 +1,8 @@
 # Wyrm Programming Guide
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-333333.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-1.2.0-B10C1A)](https://github.com/neofilisoft/wyrm/releases)
+
 Wyrm (`.wyr`) is a C-inspired scripting language, currently interpreted (tree-walking + a
 bytecode/VM path), with an ongoing roadmap toward becoming a native systems language.
 This guide documents the language **as currently implemented** (`lexer.py`, `parser.py`,
