@@ -226,7 +226,7 @@ async def run_wyrm_source_async(code):
     inputEl.disabled = false;
     runBtn.disabled = false;
     outputEl.innerHTML = '';
-    appendLine('พร้อมใช้งาน - กด Run เพื่อรันโค้ด (Ctrl/Cmd+Enter)', 'sys');
+    appendLine('', 'sys');
 
     return pyodide;
   } catch (e) {
