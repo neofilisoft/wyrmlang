@@ -2,8 +2,10 @@ const EXAMPLES = [
   { label: "hello", code: 'fn main() {\n    print("Hello World")\n}' },
   { label: "input demo", code: 'fn main() {\n    var name = input("Enter your name: ")\n    print("Hello, " + name + "!")\n}' },
   { label: "if/elif", code: 'fn main() {\n    var x = 7\n    if x > 10 {\n        print("big")\n    } elif x > 5 {\n        print("medium")\n    } else {\n        print("small")\n    }\n}' },
-  { label: "repeat/til", code: 'fn main() {\n    var i = 0\n    repeat {\n        print(i)\n        i += 1\n    } til (i == 5)\n}' },
+  { label: "do/til", code: 'fn main() {\n    var i = 0\n    do {\n        print(i)\n        i = i + 1\n    } til (i == 5)\n}' },
   { label: "arrays", code: 'fn main() {\n    var nums = [10, 20, 30]\n    print(nums[1])\n    print(len(nums))\n}' },
+  { label: "arena", code: 'fn main() {\n    arena buf(256)\n    var p = buf.alloc(64)\n    print("Allocated 64 bytes in 256-byte arena")\n}' },
+  { label: "unsafe & raw", code: 'fn main() {\n    unsafe {\n        var p = malloc(64)\n        // Use raw memory operations inside unsafe blocks\n        free(p)\n    }\n    print("Freed raw memory successfully")\n}' },
 ];
 
 /* ---------- theme toggle ---------- */
@@ -71,7 +73,7 @@ function highlightWyrm(code) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 
-  const mainRegex = /(\/\/.*)|(\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*')|\b(fn|if|elif|else|repeat|til|break|continue|return|var|dec|use)\b|\b(true|false|null)\b|\b(print|input|int|float|str|len|type|abs|max|min|round|pow|append|pop)\b|(\b\d+(?:\.\d+)?\b)/g;
+  const mainRegex = /(\/\/.*)|(\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*')|\b(fn|if|elif|else|do|repeat|til|break|continue|return|var|dec|use|unsafe|owned|arena)\b|\b(true|false|null)\b|\b(print|input|int|float|str|len|type|abs|max|min|round|pow|append|pop|malloc|free|realloc)\b|(\b\d+(?:\.\d+)?\b)/g;
 
   html = html.replace(mainRegex, (match, comment, str, keyword, constant, builtin, number) => {
     if (comment) return `<span class="hl-comment">${comment}</span>`;
