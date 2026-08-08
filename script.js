@@ -3,9 +3,10 @@ const EXAMPLES = [
   { label: "input demo", code: 'fn main() {\n    var name = input("Enter your name: ")\n    print("Hello, " + name + "!")\n}' },
   { label: "if/elif", code: 'fn main() {\n    var x = 7\n    if x > 10 {\n        print("big")\n    } elif x > 5 {\n        print("medium")\n    } else {\n        print("small")\n    }\n}' },
   { label: "do/til", code: 'fn main() {\n    var i = 0\n    do {\n        print(i)\n        i = i + 1\n    } til (i == 5)\n}' },
-  { label: "arrays", code: 'fn main() {\n    var nums = [10, 20, 30]\n    print(nums[1])\n    print(len(nums))\n}' },
+  { label: "arrays & slices", code: 'fn main() {\n    var nums = [10, 20, 30, 40, 50]\n    print(nums[1])\n    print(nums[1:3])\n    print(len(nums))\n}' },
+  { label: "strings", code: 'fn main() {\n    var s = "  Wyrm Lang  "\n    print(trim(s))\n    print(upper(s))\n    print(split("a,b,c", ","))\n    print(join("-", ["x", "y", "z"]))\n}' },
   { label: "arena", code: 'fn main() {\n    arena buf(256)\n    var p = buf.alloc(64)\n    print("Allocated 64 bytes in 256-byte arena")\n}' },
-  { label: "unsafe & raw", code: 'fn main() {\n    unsafe {\n        var p = malloc(64)\n        // Use raw memory operations inside unsafe blocks\n        free(p)\n    }\n    print("Freed raw memory successfully")\n}' },
+  { label: "unsafe & raw", code: 'fn main() {\n    unsafe {\n        var p = malloc(64)\n        free(p)\n    }\n    print("Freed raw memory successfully")\n}' },
 ];
 
 /* ---------- theme toggle ---------- */
@@ -73,15 +74,17 @@ function highlightWyrm(code) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 
-  const mainRegex = /(\/\/.*)|(\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*')|\b(fn|if|elif|else|do|repeat|til|break|continue|return|var|dec|use|unsafe|owned|arena)\b|\b(true|false|null)\b|\b(print|input|int|float|str|len|type|abs|max|min|round|pow|append|pop|malloc|free|realloc)\b|(\b\d+(?:\.\d+)?\b)/g;
+  // Note: `//` only starts a comment at the start of a line in Wyrm 2.3
+  // (mid-line `//` is floor-division), matching the native lexer.
+  const mainRegex = /(^|\n)([ \t]*\/\/\/?.*)|(\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*')|\b(fn|if|elif|else|do|repeat|til|break|continue|return|var|dec|owned|arena|use|unsafe|and|or|not)\b|\b(true|false|null)\b|\b(print|input|int|float|str|len|type|abs|max|min|round|pow|append|pop|split|join|trim|upper|lower|contains|replace|starts_with|ends_with|char_at|ord_val|chr_val|to_bytes|from_bytes|malloc|free|realloc)\b|(\b\d+(?:\.\d+)?\b)/g;
 
-  html = html.replace(mainRegex, (match, comment, str, keyword, constant, builtin, number) => {
-    if (comment) return `<span class="hl-comment">${comment}</span>`;
-    if (str)     return `<span class="hl-string">${str}</span>`;
-    if (keyword) return `<span class="hl-keyword">${keyword}</span>`;
+  html = html.replace(mainRegex, (match, lineStart, comment, str, keyword, constant, builtin, number) => {
+    if (comment !== undefined) return `${lineStart}<span class="hl-comment">${comment}</span>`;
+    if (str)      return `<span class="hl-string">${str}</span>`;
+    if (keyword)  return `<span class="hl-keyword">${keyword}</span>`;
     if (constant) return `<span class="hl-constant">${constant}</span>`;
-    if (builtin) return `<span class="hl-builtin">${builtin}</span>`;
-    if (number)  return `<span class="hl-number">${number}</span>`;
+    if (builtin)  return `<span class="hl-builtin">${builtin}</span>`;
+    if (number)   return `<span class="hl-number">${number}</span>`;
     return match;
   });
 
@@ -234,7 +237,7 @@ async def run_wyrm_source_async(code):
   } catch (e) {
     statusEl.classList.add('error');
     statusText.textContent = 'โหลดไม่สำเร็จ: ' + e.message;
-    appendLine('ไม่สามารถโหลด Python runtime ได้: ' + e.message, 'err');
+    appendLine('ไม่สามารถโหลด Wyrm runtime ได้: ' + e.message, 'err');
     throw e;
   }
 }
