@@ -160,6 +160,3 @@ fn main() {
 
 ---
 
-## 7. License
-
-MIT License - see LICENSE.
