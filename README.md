@@ -1,9 +1,9 @@
-# Wyrm v3.1.0 Online Playground & Language Guide
+# Wyrm v3.2.0 Online Playground & Language Guide
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-333333.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-3.1.0-B10C1A)](https://github.com/neofilisoft/wyrm/releases)
+[![Version](https://img.shields.io/badge/version-3.2.0-B10C1A)](https://github.com/neofilisoft/wyrm/releases)
 
-Wyrm (`.wyr`) is a static systems programming language with a self-hosted compiler and gradual static typing. This repository powers the **browser-based Online Compiler & Playground** using Pyodide (WebAssembly), mirroring the features of the native Wyrm v3.1.0 toolchain.
+Wyrm (`.wyr`) is a static systems programming language with a self-hosted compiler and gradual static typing. This repository powers the **browser-based Online Compiler & Playground** using Pyodide (WebAssembly), mirroring the features of the native Wyrm v3.2.0 toolchain.
 
 ---
 
@@ -15,7 +15,7 @@ Wyrm (`.wyr`) is a static systems programming language with a self-hosted compil
 
 ---
 
-## 2. Structs & Methods (v3.1.0)
+## 2. Structs & Methods (v3.2.0)
 
 Wyrm supports systems-style data structures with named fields, methods, and receiver `self` mutation:
 
@@ -45,7 +45,7 @@ fn main() {
 
 ---
 
-## 3. Variables & Gradual Static Types (v3.1.0)
+## 3. Variables & Gradual Static Types (v3.2.0)
 
 Wyrm provides gradual static typing annotations:
 
@@ -71,7 +71,7 @@ Supported primitive types:
 
 ---
 
-## 4. Standard Library Modules (v3.1.0)
+## 4. Standard Library Modules (v3.2.0)
 
 Imported via `use std.<module>;`:
 
@@ -160,3 +160,6 @@ fn main() {
 
 ---
 
+## 7. License
+
+MIT License - see LICENSE.

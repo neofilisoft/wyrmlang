@@ -1,4 +1,4 @@
-"""Wyrm v3.1.0 tree-walking interpreter.
+"""Wyrm v3.2.0 tree-walking interpreter.
 
 Designed to run inside Pyodide in the browser. Supports async input(),
 Structs & Methods, Gradual Static Typing annotations, Standard Library
@@ -6,6 +6,8 @@ modules (std.json, std.yaml, std.collections), and Arena memory allocators.
 """
 
 import json
+import random
+import secrets
 from .ast import (
     Program, NumberLit, StringLit, BoolLit, NullLit, ArrayLit, Identifier,
     UnaryOp, BinaryOp, LogicalOp, Assign, CompoundAssign, Index, Slice, IndexAssign,
@@ -192,16 +194,37 @@ def simple_yaml_parse(text):
     return result
 
 
-def simple_yaml_encode(obj):
+def simple_yaml_encode(obj, indent=0):
     lines = []
+    prefix = " " * indent
     if isinstance(obj, dict):
         for k, v in obj.items():
-            if isinstance(v, list):
-                lines.append(f"{k}:")
+            if isinstance(v, dict):
+                lines.append(f"{prefix}{k}:")
+                lines.append(simple_yaml_encode(v, indent + 2))
+            elif isinstance(v, list):
+                lines.append(f"{prefix}{k}:")
                 for item in v:
-                    lines.append(f"  - {item}")
+                    if isinstance(item, dict):
+                        lines.append(simple_yaml_encode(item, indent + 2))
+                    else:
+                        lines.append(f"{prefix}  - {item}")
+            elif isinstance(v, str):
+                lines.append(f"{prefix}{k}: '{v}'" if (":" in v or " " in v) else f"{prefix}{k}: {v}")
+            elif isinstance(v, bool):
+                lines.append(f"{prefix}{k}: {'true' if v else 'false'}")
+            elif v is None:
+                lines.append(f"{prefix}{k}: null")
             else:
-                lines.append(f"{k}: {v}")
+                lines.append(f"{prefix}{k}: {v}")
+    elif isinstance(obj, list):
+        for item in obj:
+            if isinstance(item, dict):
+                lines.append(simple_yaml_encode(item, indent + 2))
+            else:
+                lines.append(f"{prefix}- {item}")
+    else:
+        lines.append(f"{prefix}{obj}")
     return "\n".join(lines)
 
 
@@ -232,6 +255,10 @@ class Interpreter:
             self.globals.declare("json_parse", lambda args: json.loads(args[0]))
             self.globals.declare("json_encode", lambda args: json.dumps(args[0], separators=(',', ':')))
             self.globals.declare("json_pretty", lambda args: json.dumps(args[0], indent=int(args[1]) if len(args) > 1 else 2))
+            self.globals.declare("json_object", lambda args: {})
+            self.globals.declare("json_set", lambda args: args[0].__setitem__(args[1], args[2]) or args[0] if isinstance(args[0], dict) else args[0])
+            self.globals.declare("json_get", lambda args: args[0].get(args[1], None) if isinstance(args[0], dict) else None)
+            self.globals.declare("json_has", lambda args: (args[1] in args[0]) if isinstance(args[0], dict) else False)
 
         elif mod_name == "std.yaml":
             self.globals.declare("yaml_parse", lambda args: simple_yaml_parse(args[0]))
@@ -246,6 +273,21 @@ class Interpreter:
             self.globals.declare("set_new", lambda args: set())
             self.globals.declare("set_add", lambda args: args[0].add(args[1]))
             self.globals.declare("set_has", lambda args: args[1] in args[0])
+
+        elif mod_name == "std.random":
+            self.globals.declare("rand_seed", lambda args: random.seed(int(args[0])) if (args and args[0] is not None) else random.seed())
+            self.globals.declare("rand", lambda args: random.random())
+            self.globals.declare("rand_int", lambda args: random.randint(int(args[0]), int(args[1])) if int(args[0]) <= int(args[1]) else random.randint(int(args[1]), int(args[0])))
+            self.globals.declare("rand_range", lambda args: random.randint(int(args[0]), int(args[1])) if int(args[0]) <= int(args[1]) else random.randint(int(args[1]), int(args[0])))
+            self.globals.declare("rand_choice", lambda args: random.choice(args[0]) if (isinstance(args[0], list) and len(args[0]) > 0) else None)
+            self.globals.declare("rand_shuffle", lambda args: (lambda lst: (random.shuffle(lst), lst)[1])(list(args[0])) if isinstance(args[0], list) else args[0])
+            self.globals.declare("rand_secure", lambda args: secrets.randbelow(9007199254740992) / 9007199254740992.0)
+            self.globals.declare("rand_secure_int", lambda args: (int(args[0]) + secrets.randbelow(int(args[1]) - int(args[0]) + 1)) if int(args[1]) >= int(args[0]) else (int(args[1]) + secrets.randbelow(int(args[0]) - int(args[1]) + 1)))
+            self.globals.declare("rand_bytes_hex", lambda args: secrets.token_hex(int(args[0]) if args else 16))
+            self.globals.declare("rand_has_trng", lambda args: True)
+            self.globals.declare("rand_trng", lambda args: secrets.randbelow(9007199254740992) / 9007199254740992.0)
+            self.globals.declare("rand_trng_int", lambda args: (int(args[0]) + secrets.randbelow(int(args[1]) - int(args[0]) + 1)) if int(args[1]) >= int(args[0]) else (int(args[1]) + secrets.randbelow(int(args[0]) - int(args[1]) + 1)))
+            self.globals.declare("rand_reseed_trng", lambda args: random.seed(secrets.randbits(64)))
 
         elif mod_name in ("std.sdl", "std.ffi", "std.thread"):
             # Browser sandbox stubs to avoid runtime crashes
