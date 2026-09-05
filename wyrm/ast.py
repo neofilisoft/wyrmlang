@@ -1,4 +1,4 @@
-"""AST node classes for the Wyrm 2.3 interpreter."""
+"""AST node classes for the Wyrm v3.1.0 interpreter."""
 
 
 class Node:
@@ -60,12 +60,13 @@ class LogicalOp(Node):
 
 
 class Assign(Node):
-    def __init__(self, target, value, declared=False, const=False, owned=False):
-        self.target = target  # Identifier or Index
+    def __init__(self, target, value, declared=False, const=False, owned=False, type_annot=None):
+        self.target = target
         self.value = value
         self.declared = declared
         self.const = const
         self.owned = owned
+        self.type_annot = type_annot
 
 
 class CompoundAssign(Node):
@@ -95,6 +96,19 @@ class IndexAssign(Node):
         self.value = value
 
 
+class MemberAccess(Node):
+    def __init__(self, obj, member):
+        self.obj = obj
+        self.member = member
+
+
+class MemberAssign(Node):
+    def __init__(self, obj, member, value):
+        self.obj = obj
+        self.member = member
+        self.value = value
+
+
 class Call(Node):
     def __init__(self, callee, args):
         self.callee = callee
@@ -109,10 +123,20 @@ class MethodCall(Node):
 
 
 class FuncDef(Node):
-    def __init__(self, name, params, body):
+    def __init__(self, name, params, body, param_types=None, return_type=None):
         self.name = name
         self.params = params
         self.body = body
+        self.param_types = param_types or {}
+        self.return_type = return_type
+
+
+class StructDef(Node):
+    def __init__(self, name, fields, methods, field_types=None):
+        self.name = name
+        self.fields = fields
+        self.methods = methods
+        self.field_types = field_types or {}
 
 
 class Return(Node):
@@ -130,7 +154,6 @@ class Continue(Node):
 
 class If(Node):
     def __init__(self, branches, else_body):
-        # branches: list of (condition, body)
         self.branches = branches
         self.else_body = else_body
 

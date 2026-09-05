@@ -1,12 +1,40 @@
 const EXAMPLES = [
-  { label: "hello", code: 'fn main() {\n    print("Hello World")\n}' },
-  { label: "input demo", code: 'fn main() {\n    var name = input("Enter your name: ")\n    print("Hello, " + name + "!")\n}' },
-  { label: "if/elif", code: 'fn main() {\n    var x = 7\n    if x > 10 {\n        print("big")\n    } elif x > 5 {\n        print("medium")\n    } else {\n        print("small")\n    }\n}' },
-  { label: "do/til", code: 'fn main() {\n    var i = 0\n    do {\n        print(i)\n        i = i + 1\n    } til (i == 5)\n}' },
-  { label: "arrays & slices", code: 'fn main() {\n    var nums = [10, 20, 30, 40, 50]\n    print(nums[1])\n    print(nums[1:3])\n    print(len(nums))\n}' },
-  { label: "strings", code: 'fn main() {\n    var s = "  Wyrm Lang  "\n    print(trim(s))\n    print(upper(s))\n    print(split("a,b,c", ","))\n    print(join("-", ["x", "y", "z"]))\n}' },
-  { label: "arena", code: 'fn main() {\n    arena buf(256)\n    var p = buf.alloc(64)\n    print("Allocated 64 bytes in 256-byte arena")\n}' },
-  { label: "unsafe & raw", code: 'fn main() {\n    unsafe {\n        var p = malloc(64)\n        free(p)\n    }\n    print("Freed raw memory successfully")\n}' },
+  {
+    label: "hello",
+    code: 'fn main() {\n    print("Hello, Wyrm v3.1.0!")\n}'
+  },
+  {
+    label: "structs & methods",
+    code: 'struct Point {\n    x: i32,\n    y: i32\n\n    fn distance_sq(self) {\n        return self.x * self.x + self.y * self.y\n    }\n\n    fn translate(self, dx, dy) {\n        self.x = self.x + dx\n        self.y = self.y + dy\n    }\n}\n\nfn main() {\n    var p = Point(3, 4)\n    print("Initial distance squared:", p.distance_sq())\n    p.translate(10, 20)\n    print("Translated Point:", p.x, p.y)\n    print("New distance squared:", p.distance_sq())\n}'
+  },
+  {
+    label: "static types",
+    code: 'fn add(a: i64, b: i64) -> i64 {\n    return a + b\n}\n\nfn main() {\n    var count: i64 = 1000000000\n    var ratio: f32 = 3.14159\n    var flag: bool = true\n    var sum: i64 = add(count, 500000000)\n    print("Static sum:", sum)\n    print("Ratio:", ratio)\n    print("Flag:", flag)\n}'
+  },
+  {
+    label: "std.json",
+    code: 'use std.json;\n\nfn main() {\n    var text = "{\\"language\\": \\"Wyrm\\", \\"version\\": 3.1, \\"fast\\": true}"\n    var obj = json_parse(text)\n    print("Language:", obj["language"])\n    print("Version:", obj["version"])\n    obj["author"] = "Neofilisoft"\n    print("Encoded JSON:", json_encode(obj))\n}'
+  },
+  {
+    label: "std.yaml",
+    code: 'use std.yaml;\n\nfn main() {\n    var text = "project: Wyrm\\nversion: 3.1\\nmode: release\\n"\n    var cfg = yaml_parse(text)\n    print("Project:", cfg["project"])\n    print("Version:", cfg["version"])\n    print("Mode:", cfg["mode"])\n}'
+  },
+  {
+    label: "std.collections",
+    code: 'use std.collections;\n\nfn main() {\n    var m = map_new()\n    map_set(m, "player", "WyrmMaster")\n    map_set(m, "score", 9999)\n    print("Player:", map_get(m, "player"))\n    print("Score:", map_get(m, "score"))\n    print("Has score?", map_has(m, "score"))\n    print("Map length:", map_len(m))\n\n    var s = set_new()\n    set_add(s, "wyrm")\n    print("Has wyrm in set?", set_has(s, "wyrm"))\n}'
+  },
+  {
+    label: "do/til loops",
+    code: 'fn main() {\n    var i = 0\n    print("--- Testing do ... til loop ---")\n    do {\n        i = i + 1\n        if i == 2 {\n            continue\n        }\n        if i == 5 {\n            break\n        }\n        print("Step:", i)\n    } til i >= 10\n    print("Done!")\n}'
+  },
+  {
+    label: "arena memory",
+    code: 'fn main() {\n    arena buf(1024)\n    var chunk1 = buf.alloc(64)\n    var chunk2 = buf.alloc(128)\n    print("Allocated 64 and 128 bytes from arena")\n    buf.reset()\n    print("Arena reset successfully for bulk reuse")\n}'
+  },
+  {
+    label: "input demo",
+    code: 'fn main() {\n    var name = input("Enter your name: ")\n    print("Welcome to Wyrm v3.1.0, " + name + "!")\n}'
+  }
 ];
 
 /* ---------- theme toggle ---------- */
@@ -56,7 +84,6 @@ function appendLine(text, cls) {
 }
 
 function appendText(text, cls) {
-  // append text without a trailing newline div (for inline prompt display)
   const span = document.createElement('span');
   span.className = 'line-' + cls;
   span.style.display = 'block';
@@ -74,9 +101,7 @@ function highlightWyrm(code) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 
-  // Note: `//` only starts a comment at the start of a line in Wyrm 2.3
-  // (mid-line `//` is floor-division), matching the native lexer.
-  const mainRegex = /(^|\n)([ \t]*\/\/\/?.*)|(\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*')|\b(fn|if|elif|else|do|repeat|til|break|continue|return|var|dec|owned|arena|use|unsafe|and|or|not)\b|\b(true|false|null)\b|\b(print|input|int|float|str|len|type|abs|max|min|round|pow|append|pop|split|join|trim|upper|lower|contains|replace|starts_with|ends_with|char_at|ord_val|chr_val|to_bytes|from_bytes|malloc|free|realloc)\b|(\b\d+(?:\.\d+)?\b)/g;
+  const mainRegex = /(^|\n)([ \t]*\/\/\/?.*)|(\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*')|\b(fn|if|elif|else|do|repeat|til|break|continue|return|var|dec|owned|arena|struct|self|use|unsafe|and|or|not|i8|i16|i32|i64|u8|u16|u32|u64|f32|f64|bool|char|string)\b|\b(true|false|null)\b|\b(print|input|int|float|str|len|type|abs|max|min|round|pow|append|pop|split|join|trim|upper|lower|contains|replace|starts_with|ends_with|char_at|ord_val|chr_val|to_bytes|from_bytes|malloc|free|realloc|read_file|write_file|json_parse|json_encode|json_pretty|yaml_parse|yaml_encode|map_new|map_set|map_get|map_has|map_len|set_new|set_add|set_has)\b|(\b\d+(?:\.\d+)?\b)/g;
 
   html = html.replace(mainRegex, (match, lineStart, comment, str, keyword, constant, builtin, number) => {
     if (comment !== undefined) return `${lineStart}<span class="hl-comment">${comment}</span>`;
@@ -132,7 +157,6 @@ EXAMPLES.forEach((ex, i) => {
 clearBtn.onclick = () => { outputEl.innerHTML = ''; };
 
 /* ---------- interactive stdin mechanism ---------- */
-// pendingInputResolve holds the resolve function of the current input Promise
 let pendingInputResolve = null;
 
 function showStdinBar(prompt) {
@@ -151,7 +175,6 @@ function hideStdinBar() {
 function submitStdin() {
   if (!pendingInputResolve) return;
   const val = stdinInput.value;
-  // Echo the user input in output pane (green, like a real terminal)
   appendText((stdinPrompt.textContent || '') + val, 'echo');
   hideStdinBar();
   const resolve = pendingInputResolve;
@@ -178,13 +201,6 @@ async function boot() {
       pyodide.FS.writeFile('/wyrmpkg/wyrm/' + filename, content);
     }
 
-    // JS-side async input handler: called by Python, returns a JS Promise
-    // that resolves when the user submits the stdin bar.
-    // NOTE: there is no top-level `pyodide.createProxy()` API. Plain JS
-    // functions assigned into pyodide.globals are automatically wrapped
-    // as callable JsProxy objects on the Python side, and a Promise
-    // returned from them is automatically awaitable from Python — so we
-    // just hand the function over directly.
     const jsInputHandler = async function(prompt) {
       return new Promise((resolve) => {
         pendingInputResolve = resolve;
@@ -194,18 +210,31 @@ async function boot() {
     pyodide.globals.set('_js_input_handler', jsInputHandler);
 
     await pyodide.runPythonAsync(`
-import sys, io, asyncio
+import sys, io, re, asyncio
 sys.path.insert(0, '/wyrmpkg')
-from wyrm.lexer import Lexer
-from wyrm.parser import Parser
+from wyrm.lexer import Lexer, LexError
+from wyrm.parser import Parser, ParseError
+from wyrm.environment import WyrmRuntimeError
 from wyrm.async_interpreter import AsyncInterpreter
 
 _js_handler = _js_input_handler
 
 async def _py_input_coro(prompt):
-    # Await the JS Promise via Pyodide's JS<->Python bridge
     result = await _js_handler(prompt)
     return str(result)
+
+def _format_visual_error(e, code):
+    msg = str(e)
+    lines = code.splitlines()
+    m = re.search(r"line\s+(\d+)(?:\s+col\s+(\d+))?", msg, re.IGNORECASE)
+    if m:
+        line_num = int(m.group(1))
+        col_num = int(m.group(2)) if m.group(2) else 1
+        snippet = lines[line_num - 1] if 0 <= line_num - 1 < len(lines) else ""
+        pointer = " " * max(0, col_num - 1) + "^"
+        err_code = "error[E0002]" if isinstance(e, ParseError) else ("error[E0001]" if isinstance(e, LexError) else "error[E0003]")
+        return f"{err_code}: {msg}\n  --> main.wyr:{line_num}:{col_num}\n   |\n{line_num:2d} | {snippet}\n   | {pointer}"
+    return f"error[E0003]: {type(e).__name__}: {msg}"
 
 async def run_wyrm_source_async(code):
     buf = io.StringIO()
@@ -220,18 +249,18 @@ async def run_wyrm_source_async(code):
         await interp.execute(ast_nodes)
     except Exception as e:
         ok = False
-        err = f"{type(e).__name__}: {e}"
+        err = _format_visual_error(e, code)
     finally:
         sys.stdout = old_stdout
     return {"ok": ok, "output": buf.getvalue(), "error": err}
 `);
 
     statusEl.classList.add('ready');
-    statusText.textContent = 'พร้อมรัน';
+    statusText.textContent = 'พร้อมรัน (v3.1.0 Ready)';
     inputEl.disabled = false;
     runBtn.disabled = false;
     outputEl.innerHTML = '';
-    appendLine('', 'sys');
+    appendLine('Wyrm v3.1.0 Runtime loaded successfully.', 'sys');
 
     return pyodide;
   } catch (e) {
@@ -257,16 +286,15 @@ async function runCode() {
 
   try {
     pyodide.globals.set('_wyrm_src', code);
-    // Use the async runner which supports interactive input
     const result = await pyodide.runPythonAsync('await run_wyrm_source_async(_wyrm_src)');
     const dict = result.toJs({ dict_converter: Object.fromEntries });
-    // Remove the "$ running..." line and show output
     outputEl.innerHTML = '';
     if (dict.output) {
-      // Each line of output is a separate div
       dict.output.replace(/\n$/, '').split('\n').forEach(line => appendLine(line, 'out'));
     }
-    if (!dict.ok) appendLine(dict.error, 'err');
+    if (!dict.ok) {
+      dict.error.split('\n').forEach(line => appendLine(line, 'err'));
+    }
     if (dict.ok && !dict.output) appendLine('(no output)', 'sys');
   } catch (e) {
     outputEl.innerHTML = '';

@@ -1,17 +1,16 @@
-"""Wyrm 2.3 tree-walking interpreter.
+"""Wyrm v3.1.0 tree-walking interpreter.
 
-Designed to run inside Pyodide in the browser. Because `input()` needs to
-await a JS-side prompt, the whole interpreter is written with async
-functions; a synchronous host (e.g. CPython on the command line) can drive
-it with asyncio.run(), and Pyodide can `await` it directly since Pyodide's
-webloop supports top-level await of coroutines.
+Designed to run inside Pyodide in the browser. Supports async input(),
+Structs & Methods, Gradual Static Typing annotations, Standard Library
+modules (std.json, std.yaml, std.collections), and Arena memory allocators.
 """
 
+import json
 from .ast import (
     Program, NumberLit, StringLit, BoolLit, NullLit, ArrayLit, Identifier,
     UnaryOp, BinaryOp, LogicalOp, Assign, CompoundAssign, Index, Slice, IndexAssign,
-    Call, MethodCall, FuncDef, Return, Break, Continue, If, DoTil, UseStmt,
-    UnsafeBlock, ArenaDecl, ExprStmt,
+    MemberAccess, MemberAssign, Call, MethodCall, FuncDef, StructDef, Return,
+    Break, Continue, If, DoTil, UseStmt, UnsafeBlock, ArenaDecl, ExprStmt,
 )
 from .environment import Environment, WyrmRuntimeError
 
@@ -30,19 +29,49 @@ class ReturnSignal(Exception):
 
 
 class WyrmFunction:
-    __slots__ = ("name", "params", "body", "closure")
+    __slots__ = ("name", "params", "body", "closure", "param_types", "return_type")
 
-    def __init__(self, name, params, body, closure):
+    def __init__(self, name, params, body, closure, param_types=None, return_type=None):
         self.name = name
         self.params = params
         self.body = body
         self.closure = closure
+        self.param_types = param_types or {}
+        self.return_type = return_type
+
+
+class WyrmStructDef:
+    __slots__ = ("name", "fields", "methods", "field_types")
+
+    def __init__(self, name, fields, methods, field_types=None):
+        self.name = name
+        self.fields = fields
+        self.methods = {m.name: m for m in methods}
+        self.field_types = field_types or {}
+
+
+class WyrmStructInstance:
+    __slots__ = ("struct_def", "fields")
+
+    def __init__(self, struct_def, fields):
+        self.struct_def = struct_def
+        self.fields = fields
+
+    def get_field(self, name):
+        if name in self.fields:
+            return self.fields[name]
+        raise WyrmRuntimeError(f"Field '{name}' not found on struct '{self.struct_def.name}'")
+
+    def set_field(self, name, value):
+        self.fields[name] = value
+
+    def __repr__(self):
+        f_str = ", ".join(f"{k}: {wyrm_repr(v)}" for k, v in self.fields.items())
+        return f"{self.struct_def.name}{{{f_str}}}"
 
 
 class Arena:
-    """Simplified arena stand-in: browser sandbox has no raw memory, so
-    arena/alloc/unsafe/malloc are modeled as an in-memory list-backed
-    allocator purely for program-visible behavior (values, not addresses)."""
+    """Arena memory allocator for linear allocation and bulk reset."""
 
     def __init__(self, size):
         self.size = size
@@ -60,6 +89,7 @@ class Arena:
     def reset(self):
         self.used = 0
         self.blocks = []
+        return None
 
 
 def wyrm_type_name(v):
@@ -75,6 +105,10 @@ def wyrm_type_name(v):
         return "string"
     if isinstance(v, list):
         return "array"
+    if isinstance(v, dict):
+        return "map"
+    if isinstance(v, WyrmStructInstance):
+        return v.struct_def.name
     if isinstance(v, WyrmFunction):
         return "function"
     return "object"
@@ -91,6 +125,11 @@ def wyrm_str(v):
         return repr(v)
     if isinstance(v, list):
         return "[" + ", ".join(wyrm_repr(e) for e in v) + "]"
+    if isinstance(v, dict):
+        entries = [f'"{k}": {wyrm_repr(val)}' for k, val in v.items()]
+        return "{" + ", ".join(entries) + "}"
+    if isinstance(v, WyrmStructInstance):
+        return repr(v)
     return str(v)
 
 
@@ -107,37 +146,123 @@ def is_truthy(v):
         return v
     if isinstance(v, (int, float)):
         return v != 0
-    if isinstance(v, str):
-        return len(v) > 0
-    if isinstance(v, list):
+    if isinstance(v, (str, list, dict)):
         return len(v) > 0
     return True
 
 
+# -- Pure Python YAML Helper ------------------------------------------
+
+def simple_yaml_parse(text):
+    """Simple block-style YAML parser supporting key-value, lists, and numbers."""
+    lines = text.strip().splitlines()
+    result = {}
+    current_key = None
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if ":" in line:
+            parts = line.split(":", 1)
+            k = parts[0].strip()
+            val_str = parts[1].strip()
+            if val_str == "":
+                current_key = k
+                result[k] = []
+            else:
+                current_key = None
+                if val_str.lower() == "true":
+                    result[k] = True
+                elif val_str.lower() == "false":
+                    result[k] = False
+                elif val_str.lower() in ("null", "~"):
+                    result[k] = None
+                else:
+                    try:
+                        result[k] = int(val_str) if "." not in val_str else float(val_str)
+                    except ValueError:
+                        result[k] = val_str.strip('"').strip("'")
+        elif line.startswith("-") and current_key is not None:
+            item = line[1:].strip().strip('"').strip("'")
+            try:
+                item_val = int(item) if "." not in item else float(item)
+            except ValueError:
+                item_val = item
+            result[current_key].append(item_val)
+    return result
+
+
+def simple_yaml_encode(obj):
+    lines = []
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if isinstance(v, list):
+                lines.append(f"{k}:")
+                for item in v:
+                    lines.append(f"  - {item}")
+            else:
+                lines.append(f"{k}: {v}")
+    return "\n".join(lines)
+
+
+# -- Interpreter ------------------------------------------------------
+
 class Interpreter:
     def __init__(self, output=None, input_fn=None):
-        """output: callable(str) -> None, called for each print().
-        input_fn: async callable(prompt:str) -> str, called for input()."""
         self.globals = Environment()
         self._output = output or (lambda s: None)
         self._input_fn = input_fn
         self.modules_loaded = set()
+        self._init_stdlib()
 
     def write(self, s):
         self._output(s)
 
+    def _init_stdlib(self):
+        # Always available built-in functions
+        for name, fn in BUILTINS.items():
+            self.globals.declare(name, fn)
+
+    def load_module(self, mod_name):
+        if mod_name in self.modules_loaded:
+            return
+        self.modules_loaded.add(mod_name)
+
+        if mod_name == "std.json":
+            self.globals.declare("json_parse", lambda args: json.loads(args[0]))
+            self.globals.declare("json_encode", lambda args: json.dumps(args[0], separators=(',', ':')))
+            self.globals.declare("json_pretty", lambda args: json.dumps(args[0], indent=int(args[1]) if len(args) > 1 else 2))
+
+        elif mod_name == "std.yaml":
+            self.globals.declare("yaml_parse", lambda args: simple_yaml_parse(args[0]))
+            self.globals.declare("yaml_encode", lambda args: simple_yaml_encode(args[0]))
+
+        elif mod_name == "std.collections":
+            self.globals.declare("map_new", lambda args: {})
+            self.globals.declare("map_set", lambda args: args[0].__setitem__(args[1], args[2]))
+            self.globals.declare("map_get", lambda args: args[0].get(args[1], None))
+            self.globals.declare("map_has", lambda args: args[1] in args[0])
+            self.globals.declare("map_len", lambda args: len(args[0]))
+            self.globals.declare("set_new", lambda args: set())
+            self.globals.declare("set_add", lambda args: args[0].add(args[1]))
+            self.globals.declare("set_has", lambda args: args[1] in args[0])
+
+        elif mod_name in ("std.sdl", "std.ffi", "std.thread"):
+            # Browser sandbox stubs to avoid runtime crashes
+            pass
+
     async def run(self, program: Program):
         env = self.globals
-        # First pass: hoist function definitions so calls can appear before
-        # their textual definition (matches C-like forward reference).
+        # First pass: hoist function & struct definitions
         for stmt in program.statements:
             if isinstance(stmt, FuncDef):
-                env.declare(stmt.name, WyrmFunction(stmt.name, stmt.params, stmt.body, env))
+                env.declare(stmt.name, WyrmFunction(stmt.name, stmt.params, stmt.body, env, stmt.param_types, stmt.return_type))
+            elif isinstance(stmt, StructDef):
+                env.declare(stmt.name, WyrmStructDef(stmt.name, stmt.fields, stmt.methods, stmt.field_types))
 
-        # Execute top-level statements in order (functions already hoisted,
-        # skip re-declaring but still allow other top-level side effects).
+        # Execute top-level statements
         for stmt in program.statements:
-            if isinstance(stmt, FuncDef):
+            if isinstance(stmt, (FuncDef, StructDef)):
                 continue
             await self.exec_stmt(stmt, env)
 
@@ -160,7 +285,10 @@ class Interpreter:
 
         if t is Assign:
             value = await self.eval(node.value, env)
-            env.declare(node.target.name, value, const=node.const) if node.declared else env.set(node.target.name, value)
+            if node.declared:
+                env.declare(node.target.name, value, const=node.const)
+            else:
+                env.set(node.target.name, value)
             return
 
         if t is CompoundAssign:
@@ -172,25 +300,52 @@ class Interpreter:
             elif isinstance(node.target, Index):
                 obj = await self.eval(node.target.obj, env)
                 idx = await self.eval(node.target.index, env)
-                obj[int(idx)] = result
+                if isinstance(obj, dict):
+                    obj[idx] = result
+                elif isinstance(obj, list):
+                    obj[int(idx)] = result
+            elif isinstance(node.target, MemberAccess):
+                obj = await self.eval(node.target.obj, env)
+                if isinstance(obj, WyrmStructInstance):
+                    obj.set_field(node.target.member, result)
+                elif isinstance(obj, dict):
+                    obj[node.target.member] = result
             return
 
         if t is IndexAssign:
             obj = await self.eval(node.obj, env)
             idx = await self.eval(node.index, env)
             value = await self.eval(node.value, env)
-            if not isinstance(obj, list):
-                raise WyrmRuntimeError("Cannot index-assign a non-array value")
-            i = int(idx)
-            if i < 0:
-                i += len(obj)
-            if i < 0 or i >= len(obj):
-                raise WyrmRuntimeError(f"Index {idx} out of range")
-            obj[i] = value
-            return
+            if isinstance(obj, dict):
+                obj[idx] = value
+                return
+            if isinstance(obj, list):
+                i = int(idx)
+                if i < 0:
+                    i += len(obj)
+                if i < 0 or i >= len(obj):
+                    raise WyrmRuntimeError(f"Index {idx} out of range")
+                obj[i] = value
+                return
+            raise WyrmRuntimeError("Cannot index-assign a non-array / non-map value")
+
+        if t is MemberAssign:
+            obj = await self.eval(node.obj, env)
+            val = await self.eval(node.value, env)
+            if isinstance(obj, WyrmStructInstance):
+                obj.set_field(node.member, val)
+                return
+            if isinstance(obj, dict):
+                obj[node.member] = val
+                return
+            raise WyrmRuntimeError(f"Cannot set field '{node.member}' on type {wyrm_type_name(obj)}")
 
         if t is FuncDef:
-            env.declare(node.name, WyrmFunction(node.name, node.params, node.body, env))
+            env.declare(node.name, WyrmFunction(node.name, node.params, node.body, env, node.param_types, node.return_type))
+            return
+
+        if t is StructDef:
+            env.declare(node.name, WyrmStructDef(node.name, node.fields, node.methods, node.field_types))
             return
 
         if t is If:
@@ -235,10 +390,7 @@ class Interpreter:
             return
 
         if t is UseStmt:
-            # Browser sandbox has no filesystem; modules are a no-op here
-            # (matches "playground" scope — real multi-file builds happen
-            # via the native wyrmc toolchain).
-            self.modules_loaded.add(node.module)
+            self.load_module(node.module)
             return
 
         raise WyrmRuntimeError(f"Unknown statement node: {t}")
@@ -299,17 +451,27 @@ class Interpreter:
                 raise WyrmRuntimeError(f"Cannot slice value of type {wyrm_type_name(obj)}")
             return obj[start:end]
 
+        if t is MemberAccess:
+            obj = await self.eval(node.obj, env)
+            if isinstance(obj, WyrmStructInstance):
+                return obj.get_field(node.member)
+            if isinstance(obj, dict):
+                return obj.get(node.member, None)
+            raise WyrmRuntimeError(f"Cannot access member '{node.member}' on type {wyrm_type_name(obj)}")
+
         if t is Call:
             return await self.call_named(node.callee, node.args, env)
 
         if t is MethodCall:
-            obj = env.get(node.obj.name) if isinstance(node.obj, Identifier) else await self.eval(node.obj, env)
+            obj = await self.eval(node.obj, env)
             args = [await self.eval(a, env) for a in node.args]
-            return self._call_method(obj, node.method, args)
+            return await self._call_method(obj, node.method, args)
 
         raise WyrmRuntimeError(f"Unknown expression node: {t}")
 
     def _do_index(self, obj, idx):
+        if isinstance(obj, dict):
+            return obj.get(idx, None)
         if isinstance(obj, (list, str)):
             i = int(idx)
             if i < 0:
@@ -319,15 +481,31 @@ class Interpreter:
             return obj[i]
         raise WyrmRuntimeError(f"Cannot index value of type {wyrm_type_name(obj)}")
 
-    def _call_method(self, obj, method, args):
+    async def _call_method(self, obj, method_name, args):
+        if isinstance(obj, WyrmStructInstance):
+            if method_name not in obj.struct_def.methods:
+                raise WyrmRuntimeError(f"Method '{method_name}' not found on struct '{obj.struct_def.name}'")
+            fn_def = obj.struct_def.methods[method_name]
+            call_env = Environment(self.globals)
+            call_env.declare("self", obj)
+            # Map parameters: if first param is "self", match subsequent params
+            param_names = fn_def.params[1:] if (fn_def.params and fn_def.params[0] == "self") else fn_def.params
+            for i, pname in enumerate(param_names):
+                call_env.declare(pname, args[i] if i < len(args) else None)
+            try:
+                await self.exec_block(fn_def.body, call_env)
+            except ReturnSignal as r:
+                return r.value
+            return None
+
         if isinstance(obj, Arena):
-            if method == "alloc":
+            if method_name == "alloc":
                 return obj.alloc(int(args[0]))
-            if method == "reset":
-                obj.reset()
-                return None
-            raise WyrmRuntimeError(f"Unknown arena method '{method}'")
-        raise WyrmRuntimeError(f"Cannot call method '{method}' on {wyrm_type_name(obj)}")
+            if method_name == "reset":
+                return obj.reset()
+            raise WyrmRuntimeError(f"Unknown arena method '{method_name}'")
+
+        raise WyrmRuntimeError(f"Cannot call method '{method_name}' on {wyrm_type_name(obj)}")
 
     def _apply_binop(self, op, left, right):
         if op == "+":
@@ -385,17 +563,24 @@ class Interpreter:
                 raise WyrmRuntimeError("input() is not available in this environment")
             return await self._input_fn(wyrm_str(prompt))
 
+        # Struct constructor
+        if env.has(name):
+            val = env.get(name)
+            if isinstance(val, WyrmStructDef):
+                field_vals = {}
+                for i, fname in enumerate(val.fields):
+                    field_vals[fname] = args[i] if i < len(args) else None
+                return WyrmStructInstance(val, field_vals)
+            if isinstance(val, WyrmFunction):
+                return await self.call_function(val, args)
+            if callable(val):
+                return val(args)
+
         builtin = BUILTINS.get(name)
         if builtin is not None:
             return builtin(args)
 
-        if env.has(name):
-            fn = env.get(name)
-            if isinstance(fn, WyrmFunction):
-                return await self.call_function(fn, args)
-            raise WyrmRuntimeError(f"'{name}' is not a function")
-
-        raise WyrmRuntimeError(f"Undefined function '{name}'")
+        raise WyrmRuntimeError(f"Undefined function or struct '{name}'")
 
     async def call_function(self, fn: WyrmFunction, args):
         call_env = Environment(fn.closure)
@@ -408,13 +593,13 @@ class Interpreter:
         return None
 
 
-# -- builtins (synchronous; input/print handled specially above) --------
+# -- builtins ----------------------------------------------------------
 
 def _b_len(args):
     v = args[0]
-    if isinstance(v, (list, str)):
+    if isinstance(v, (list, str, dict)):
         return len(v)
-    raise WyrmRuntimeError("len() expects an array or string")
+    raise WyrmRuntimeError("len() expects an array, string, or map")
 
 
 def _b_str(args):
@@ -456,8 +641,6 @@ def _b_min(args):
 
 
 def _b_round(args):
-    if len(args) > 1:
-        return round(args[0], int(args[1]))
     return round(args[0])
 
 
@@ -466,75 +649,71 @@ def _b_pow(args):
 
 
 def _b_append(args):
-    arr, val = args[0], args[1]
-    if not isinstance(arr, list):
-        raise WyrmRuntimeError("append() expects an array")
-    arr.append(val)
-    return arr
+    if not isinstance(args[0], list):
+        raise WyrmRuntimeError("append() expects a list as first argument")
+    args[0].append(args[1])
+    return None
 
 
 def _b_pop(args):
-    arr = args[0]
-    if not isinstance(arr, list):
-        raise WyrmRuntimeError("pop() expects an array")
-    if not arr:
-        raise WyrmRuntimeError("pop() from empty array")
-    if len(args) > 1:
-        return arr.pop(int(args[1]))
-    return arr.pop()
+    if not isinstance(args[0], list):
+        raise WyrmRuntimeError("pop() expects a list as first argument")
+    if not args[0]:
+        raise WyrmRuntimeError("pop() from empty list")
+    return args[0].pop()
 
 
 def _b_split(args):
-    s, sep = args[0], args[1]
+    s = wyrm_str(args[0])
+    sep = wyrm_str(args[1]) if len(args) > 1 else " "
     return s.split(sep)
 
 
 def _b_join(args):
-    sep, lst = args[0], args[1]
-    return sep.join(wyrm_str(x) if not isinstance(x, str) else x for x in lst)
+    sep = wyrm_str(args[0])
+    arr = args[1]
+    if not isinstance(arr, list):
+        raise WyrmRuntimeError("join() expects array as second argument")
+    return sep.join(wyrm_str(e) for e in arr)
 
 
 def _b_trim(args):
-    return args[0].strip()
+    return wyrm_str(args[0]).strip()
 
 
 def _b_upper(args):
-    return args[0].upper()
+    return wyrm_str(args[0]).upper()
 
 
 def _b_lower(args):
-    return args[0].lower()
+    return wyrm_str(args[0]).lower()
 
 
 def _b_contains(args):
-    s, sub = args[0], args[1]
-    if isinstance(s, list):
-        return sub in s
-    return sub in s
+    return wyrm_str(args[1]) in wyrm_str(args[0])
 
 
 def _b_replace(args):
-    s, old, new = args[0], args[1], args[2]
-    return s.replace(old, new)
+    return wyrm_str(args[0]).replace(wyrm_str(args[1]), wyrm_str(args[2]))
 
 
 def _b_starts_with(args):
-    return args[0].startswith(args[1])
+    return wyrm_str(args[0]).startswith(wyrm_str(args[1]))
 
 
 def _b_ends_with(args):
-    return args[0].endswith(args[1])
+    return wyrm_str(args[0]).endswith(wyrm_str(args[1]))
 
 
 def _b_char_at(args):
-    s, i = args[0], int(args[1])
-    if i < 0 or i >= len(s):
-        raise WyrmRuntimeError(f"Index {i} out of range")
-    return s[i]
+    s = wyrm_str(args[0])
+    idx = int(args[1])
+    return s[idx] if 0 <= idx < len(s) else ""
 
 
 def _b_ord_val(args):
-    return ord(args[0])
+    s = wyrm_str(args[0])
+    return ord(s[0]) if s else 0
 
 
 def _b_chr_val(args):
@@ -542,16 +721,37 @@ def _b_chr_val(args):
 
 
 def _b_to_bytes(args):
-    return [ord(c) for c in args[0]]
+    s = wyrm_str(args[0])
+    return [b for b in s.encode("utf-8")]
 
 
 def _b_from_bytes(args):
-    return "".join(chr(int(b)) for b in args[0])
+    arr = args[0]
+    return bytes(arr).decode("utf-8", errors="replace")
+
+
+def _b_read_file(args):
+    path = wyrm_str(args[0])
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+    except Exception:
+        return ""
+
+
+def _b_write_file(args):
+    path = wyrm_str(args[0])
+    content = wyrm_str(args[1])
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return True
+    except Exception:
+        return False
 
 
 def _b_malloc(args):
-    n = int(args[0])
-    return [0] * n
+    return [0] * int(args[0])
 
 
 def _b_free(args):
@@ -559,12 +759,15 @@ def _b_free(args):
 
 
 def _b_realloc(args):
-    arr, n = args[0], int(args[1])
-    if not isinstance(arr, list):
-        raise WyrmRuntimeError("realloc() expects a pointer-like array")
-    if n >= len(arr):
-        return arr + [0] * (n - len(arr))
-    return arr[:n]
+    ptr = args[0]
+    new_size = int(args[1])
+    if isinstance(ptr, list):
+        if len(ptr) < new_size:
+            ptr.extend([0] * (new_size - len(ptr)))
+        else:
+            del ptr[new_size:]
+        return ptr
+    return [0] * new_size
 
 
 BUILTINS = {
@@ -594,6 +797,8 @@ BUILTINS = {
     "chr_val": _b_chr_val,
     "to_bytes": _b_to_bytes,
     "from_bytes": _b_from_bytes,
+    "read_file": _b_read_file,
+    "write_file": _b_write_file,
     "malloc": _b_malloc,
     "free": _b_free,
     "realloc": _b_realloc,

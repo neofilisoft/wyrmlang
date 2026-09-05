@@ -1,14 +1,14 @@
-"""Wyrm 2.3 parser: recursive-descent parser producing the AST in ast.py.
+"""Wyrm v3.1.0 parser: recursive-descent parser producing the AST in ast.py.
 
-Grammar mirrors compiler/wyrmc.wyr (self-hosted) plus the fuller operator
-set from the C++ bootstrap parser/lexer (+=, -=, *=, /=, %=, **, //).
+Grammar mirrors compiler/wyrmc.wyr (self-hosted v3.1) with Structs & Methods,
+gradual type annotations, arena allocation, and complete operator set.
 """
 
 from .ast import (
     Program, NumberLit, StringLit, BoolLit, NullLit, ArrayLit, Identifier,
     UnaryOp, BinaryOp, LogicalOp, Assign, CompoundAssign, Index, Slice, IndexAssign,
-    Call, MethodCall, FuncDef, Return, Break, Continue, If, DoTil, UseStmt,
-    UnsafeBlock, ArenaDecl, ExprStmt,
+    MemberAccess, MemberAssign, Call, MethodCall, FuncDef, StructDef, Return,
+    Break, Continue, If, DoTil, UseStmt, UnsafeBlock, ArenaDecl, ExprStmt,
 )
 
 
@@ -73,45 +73,88 @@ class Parser:
 
         if tok.type == "USE":
             self._advance()
-            # module path may be IDENT possibly with dots, e.g. helper.wyr
             parts = [str(self._advance().value)]
             while self._check("DOT"):
                 self._advance()
                 parts.append(str(self._advance().value))
-            path = "".join(
-                p if p.startswith(".") else p for p in parts
-            )
             path = ".".join(parts) if len(parts) > 1 else parts[0]
             if self._check("SEMI"):
                 self._advance()
             return UseStmt(path)
+
+        if tok.type == "STRUCT":
+            self._advance()
+            name = self._expect("IDENT").value
+            self._expect("LBRACE")
+            fields = []
+            field_types = {}
+            methods = []
+            while not self._check("RBRACE") and not self._at_end():
+                if self._check("FN"):
+                    methods.append(self._statement())
+                    continue
+                fname = self._expect("IDENT").value
+                ftype = None
+                if self._check("COLON"):
+                    self._advance()
+                    ftype = self._expect("IDENT").value
+                fields.append(fname)
+                if ftype:
+                    field_types[fname] = ftype
+                if self._check("COMMA") or self._check("SEMI"):
+                    self._advance()
+            self._expect("RBRACE")
+            return StructDef(name, fields, methods, field_types)
 
         if tok.type == "FN":
             self._advance()
             name = self._expect("IDENT").value
             self._expect("LPAREN")
             params = []
+            param_types = {}
             if not self._check("RPAREN"):
                 while True:
-                    params.append(self._expect("IDENT").value)
+                    if self._check("SELF"):
+                        pname = self._advance().value
+                    else:
+                        pname = self._expect("IDENT").value
+                    ptype = None
+                    if self._check("COLON"):
+                        self._advance()
+                        ptype = self._expect("IDENT").value
+                    params.append(pname)
+                    if ptype:
+                        param_types[pname] = ptype
                     if self._check("COMMA"):
                         self._advance()
                         continue
                     break
             self._expect("RPAREN")
+            ret_type = None
+            if self._check("COLON"):
+                self._advance()
+                ret_type = self._expect("IDENT").value
+            elif self._check("OP") and self._cur().value == "->":
+                self._advance()
+                ret_type = self._expect("IDENT").value
             body = self._block()
-            return FuncDef(name, params, body)
+            return FuncDef(name, params, body, param_types, ret_type)
 
         if tok.type in ("VAR", "DEC", "OWNED"):
             kind = tok.type
             self._advance()
             name = self._expect("IDENT").value
+            type_annot = None
+            if self._check("COLON"):
+                self._advance()
+                type_annot = self._expect("IDENT").value
             self._expect_op("=")
             value = self._expression()
             if self._check("SEMI"):
                 self._advance()
             return Assign(Identifier(name), value, declared=True,
-                          const=(kind == "DEC"), owned=(kind == "OWNED"))
+                          const=(kind == "DEC"), owned=(kind == "OWNED"),
+                          type_annot=type_annot)
 
         if tok.type == "ARENA":
             self._advance()
@@ -166,7 +209,7 @@ class Parser:
                 self._advance()
             return Continue()
 
-        # assignment / index-assign / compound-assign / bare expression
+        # assignment / member-assign / index-assign / compound-assign / bare expression
         expr = self._expression()
 
         if self._check("OP") and self._cur().value == "=":
@@ -176,6 +219,8 @@ class Parser:
                 self._advance()
             if isinstance(expr, Index):
                 return IndexAssign(expr.obj, expr.index, value)
+            if isinstance(expr, MemberAccess):
+                return MemberAssign(expr.obj, expr.member, value)
             if isinstance(expr, Identifier):
                 return Assign(expr, value)
             raise ParseError("Invalid assignment target")
@@ -271,7 +316,7 @@ class Parser:
         node = self._unary()
         if self._check("OP") and self._cur().value == "**":
             self._advance()
-            right = self._power()  # right-associative
+            right = self._power()
             node = BinaryOp("**", node, right)
         return node
 
@@ -301,7 +346,6 @@ class Parser:
             if self._check("LBRACKET"):
                 self._advance()
                 if self._check("COLON"):
-                    # [:end]
                     self._advance()
                     end = None
                     if not self._check("RBRACKET"):
@@ -321,20 +365,23 @@ class Parser:
                 self._expect("RBRACKET")
                 node = Index(node, first)
                 continue
-            if self._check("DOT") and isinstance(node, Identifier):
+            if self._check("DOT"):
                 self._advance()
-                method = self._expect("IDENT").value
-                self._expect("LPAREN")
-                args = []
-                if not self._check("RPAREN"):
-                    while True:
-                        args.append(self._expression())
-                        if self._check("COMMA"):
-                            self._advance()
-                            continue
-                        break
-                self._expect("RPAREN")
-                node = MethodCall(node, method, args)
+                member_name = self._expect("IDENT").value
+                if self._check("LPAREN"):
+                    self._advance()
+                    args = []
+                    if not self._check("RPAREN"):
+                        while True:
+                            args.append(self._expression())
+                            if self._check("COMMA"):
+                                self._advance()
+                                continue
+                            break
+                    self._expect("RPAREN")
+                    node = MethodCall(node, member_name, args)
+                else:
+                    node = MemberAccess(node, member_name)
                 continue
             break
         return node
@@ -360,25 +407,30 @@ class Parser:
         if tok.type == "NULL":
             self._advance()
             return NullLit()
+        if tok.type == "SELF":
+            self._advance()
+            return Identifier("self")
         if tok.type == "IDENT":
             self._advance()
             return Identifier(tok.value)
-        if tok.type == "LPAREN":
-            self._advance()
-            expr = self._expression()
-            self._expect("RPAREN")
-            return expr
         if tok.type == "LBRACKET":
             self._advance()
-            elements = []
+            elems = []
             if not self._check("RBRACKET"):
                 while True:
-                    elements.append(self._expression())
+                    elems.append(self._expression())
                     if self._check("COMMA"):
                         self._advance()
                         continue
                     break
             self._expect("RBRACKET")
-            return ArrayLit(elements)
+            return ArrayLit(elems)
+        if tok.type == "LPAREN":
+            self._advance()
+            expr = self._expression()
+            self._expect("RPAREN")
+            return expr
 
-        raise ParseError(f"Unexpected token {tok.type} ({tok.value!r}) at line {tok.line}")
+        raise ParseError(
+            f"Unexpected token {tok.type} ({tok.value!r}) at line {tok.line} col {tok.col}"
+        )

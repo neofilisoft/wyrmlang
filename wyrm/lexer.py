@@ -1,14 +1,14 @@
-"""Wyrm 2.3 lexer.
+"""Wyrm v3.1.0 lexer.
 
 Tokenizes Wyrm source into a flat token list. Mirrors the tokenizer behavior
 used by the self-hosted compiler (compiler/wyrmc.wyr): // line comments,
 /// doc comments, /* */ block comments, double- and single-quoted strings
 with backslash escapes, numbers (int/float), identifiers/keywords, and
-operators/punctuation including compound assignment and comparison ops.
+operators/punctuation including compound assignment, comparison ops, and type tokens.
 """
 
 KEYWORDS = {
-    "use", "fn", "var", "dec", "owned", "arena", "if", "elif", "else",
+    "use", "fn", "var", "dec", "owned", "arena", "struct", "self", "if", "elif", "else",
     "repeat", "do", "til", "unsafe", "return", "break", "continue",
     "and", "or", "not", "true", "false", "null",
 }
@@ -16,13 +16,15 @@ KEYWORDS = {
 # Longest-match-first operator table.
 OPERATORS = [
     "&&", "||", "==", "!=", "<=", ">=", "+=", "-=", "*=", "/=", "%=",
-    "**", "//",
+    "**", "//", "->",
     "!", "<", ">", "+", "-", "*", "/", "%", "=",
 ]
 
-PUNCT = {"(": "LPAREN", ")": "RPAREN", "{": "LBRACE", "}": "RBRACE",
-          "[": "LBRACKET", "]": "RBRACKET", ",": "COMMA", ";": "SEMI",
-          ".": "DOT", ":": "COLON"}
+PUNCT = {
+    "(": "LPAREN", ")": "RPAREN", "{": "LBRACE", "}": "RBRACE",
+    "[": "LBRACKET", "]": "RBRACKET", ",": "COMMA", ";": "SEMI",
+    ".": "DOT", ":": "COLON"
+}
 
 
 class LexError(Exception):
@@ -66,15 +68,11 @@ class Lexer:
 
     def tokenize(self):
         tokens = []
-        at_line_start = True  # true at file start and right after a newline
+        at_line_start = True
         while self.pos < self.n:
             ch = self._peek()
 
-            # whitespace (newlines are not emitted as tokens, but they do
-            # reset the "start of line" flag used to disambiguate `//` as
-            # comment-start vs the floor-division operator, matching the
-            # native lexer: `//` only opens a comment at the start of a
-            # logical line)
+            # whitespace
             if ch in " \t\r":
                 self._advance()
                 continue
@@ -83,9 +81,7 @@ class Lexer:
                 at_line_start = True
                 continue
 
-            # comments: `//`, `///` only begin a comment when they appear
-            # at the start of a line. Mid-line `//` is the floor-division
-            # operator (see compiler/lexer/lexer.cpp skip_comment call site).
+            # comments
             if ch == "/" and self._peek(1) == "/" and at_line_start:
                 while self.pos < self.n and self._peek() != "\n":
                     self._advance()
