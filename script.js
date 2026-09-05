@@ -101,7 +101,7 @@ function highlightWyrm(code) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 
-  const mainRegex = /(^|\n)([ \t]*\/\/\/?.*)|(\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*')|\b(fn|if|elif|else|do|repeat|til|break|continue|return|var|dec|owned|arena|struct|self|use|unsafe|and|or|not|i8|i16|i32|i64|u8|u16|u32|u64|f32|f64|bool|char|string)\b|\b(true|false|null)\b|\b(print|input|int|float|str|len|type|abs|max|min|round|pow|append|pop|split|join|trim|upper|lower|contains|replace|starts_with|ends_with|char_at|ord_val|chr_val|to_bytes|from_bytes|malloc|free|realloc|read_file|write_file|json_parse|json_encode|json_pretty|yaml_parse|yaml_encode|map_new|map_set|map_get|map_has|map_len|set_new|set_add|set_has)\b|(\b\d+(?:\.\d+)?\b)/g;
+  const mainRegex = /(^|\n)([ \t]*\/\/\/.*)|("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|\b(fn|if|elif|else|do|repeat|til|break|continue|return|var|dec|owned|arena|struct|self|use|unsafe|and|or|not|i8|i16|i32|i64|u8|u16|u32|u64|f32|f64|bool|char|string)\b|\b(true|false|null)\b|\b(print|input|int|float|str|len|type|abs|max|min|round|pow|append|pop|split|join|trim|upper|lower|contains|replace|starts_with|ends_with|char_at|ord_val|chr_val|to_bytes|from_bytes|malloc|free|realloc|read_file|write_file|json_parse|json_encode|json_pretty|yaml_parse|yaml_encode|map_new|map_set|map_get|map_has|map_len|set_new|set_add|set_has)\b|(\b\d+(?:\.\d+)?\b)/g;
 
   html = html.replace(mainRegex, (match, lineStart, comment, str, keyword, constant, builtin, number) => {
     if (comment !== undefined) return `${lineStart}<span class="hl-comment">${comment}</span>`;
@@ -210,49 +210,11 @@ async function boot() {
     pyodide.globals.set('_js_input_handler', jsInputHandler);
 
     await pyodide.runPythonAsync(`
-import sys, io, re, asyncio
-sys.path.insert(0, '/wyrmpkg')
-from wyrm.lexer import Lexer, LexError
-from wyrm.parser import Parser, ParseError
-from wyrm.environment import WyrmRuntimeError
-from wyrm.async_interpreter import AsyncInterpreter
-
-_js_handler = _js_input_handler
-
-async def _py_input_coro(prompt):
-    result = await _js_handler(prompt)
-    return str(result)
-
-def _format_visual_error(e, code):
-    msg = str(e)
-    lines = code.splitlines()
-    m = re.search(r"line\s+(\d+)(?:\s+col\s+(\d+))?", msg, re.IGNORECASE)
-    if m:
-        line_num = int(m.group(1))
-        col_num = int(m.group(2)) if m.group(2) else 1
-        snippet = lines[line_num - 1] if 0 <= line_num - 1 < len(lines) else ""
-        pointer = " " * max(0, col_num - 1) + "^"
-        err_code = "error[E0002]" if isinstance(e, ParseError) else ("error[E0001]" if isinstance(e, LexError) else "error[E0003]")
-        return f"{err_code}: {msg}\n  --> main.wyr:{line_num}:{col_num}\n   |\n{line_num:2d} | {snippet}\n   | {pointer}"
-    return f"error[E0003]: {type(e).__name__}: {msg}"
-
-async def run_wyrm_source_async(code):
-    buf = io.StringIO()
-    old_stdout = sys.stdout
-    sys.stdout = buf
-    ok = True
-    err = ""
-    try:
-        interp = AsyncInterpreter(input_coro=_py_input_coro)
-        tokens = Lexer(code).tokenize()
-        ast_nodes = Parser(tokens).parse()
-        await interp.execute(ast_nodes)
-    except Exception as e:
-        ok = False
-        err = _format_visual_error(e, code)
-    finally:
-        sys.stdout = old_stdout
-    return {"ok": ok, "output": buf.getvalue(), "error": err}
+import sys
+if '/wyrmpkg' not in sys.path:
+    sys.path.insert(0, '/wyrmpkg')
+import wyrm.runner
+wyrm.runner.setup(_js_input_handler)
 `);
 
     statusEl.classList.add('ready');
@@ -280,13 +242,13 @@ async function runCode() {
   const pyodide = await pyodideReady;
 
   outputEl.innerHTML = '';
-  appendLine('$ running…', 'sys');
+  appendLine('$ running...', 'sys');
   runBtn.disabled = true;
   hideStdinBar();
 
   try {
     pyodide.globals.set('_wyrm_src', code);
-    const result = await pyodide.runPythonAsync('await run_wyrm_source_async(_wyrm_src)');
+    const result = await pyodide.runPythonAsync('await wyrm.runner.run_async(_wyrm_src)');
     const dict = result.toJs({ dict_converter: Object.fromEntries });
     outputEl.innerHTML = '';
     if (dict.output) {
