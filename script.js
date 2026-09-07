@@ -1,7 +1,7 @@
 const EXAMPLES = [
   {
     label: "hello",
-    code: 'fn main() {\n    print("Hello, Wyrm 1.0.0!")\n}'
+    code: 'fn main() {\n    print("Hello World")\n}'
   },
   {
     label: "structs & methods",
@@ -13,7 +13,7 @@ const EXAMPLES = [
   },
   {
     label: "std.json",
-    code: 'use std.json;\n\nfn main() {\n    var text = "{\\"language\\": \\"Wyrm\\", \\"version\\": 1.0.0, \\"fast\\": true}"\n    var obj = json_parse(text)\n    print("Language:", obj["language"])\n    print("Version:", obj["version"])\n    obj["author"] = "Neofilisoft"\n    print("Encoded JSON:", json_encode(obj))\n}'
+    code: 'use std.json;\n\nfn main() {\n    var text = "{\\"language\\": \\"Wyrm\\", \\"version\\": \\"1.0.0\\", \\"fast\\": true}"\n    var obj = json_parse(text)\n    print("Language:", obj["language"])\n    print("Version:", obj["version"])\n    obj["author"] = "Neofilisoft"\n    print("Encoded JSON:", json_encode(obj))\n}'
   },
   {
     label: "std.yaml",
@@ -21,11 +21,11 @@ const EXAMPLES = [
   },
   {
     label: "std.collections",
-    code: 'use std.collections;\n\nfn main() {\n    var m = map_new()\n    map_set(m, "player", "WyrmMaster")\n    map_set(m, "score", 9999)\n    print("Player:", map_get(m, "player"))\n    print("Score:", map_get(m, "score"))\n    print("Has score?", map_has(m, "score"))\n    print("Map length:", map_len(m))\n\n    var s = set_new()\n    set_add(s, "wyrm")\n    print("Has wyrm in set?", set_has(s, "wyrm"))\n}'
+    code: 'use std.collections;\n\nfn main() {\n    var m = map_new()\n    map_set(m, "player", "WyrmMaster")\n    map_set(m, "score", 9999)\n    print("Player:", map_get(m, "player"))\n    print("Score:", map_get(m, "score"))\n    print("Has score:", map_has(m, "score"))\n    print("Map length:", map_len(m))\n\n    var s = set_new()\n    set_add(s, "wyrm")\n    print("Has wyrm in set:", set_has(s, "wyrm"))\n}'
   },
   {
     label: "do/til loops",
-    code: 'fn main() {\n    var i = 0\n    print("Looping...")\n    do {\n        i = i + 1\n        if i == 2 {\n            continue\n        }\n        if i == 5 {\n            break\n        }\n        print("Step:", i)\n    } til i >= 10\n    print("Done!")\n}'
+    code: 'fn main() {\n    var i = 0\n    print("Looping...")\n    do {\n        i = i + 1\n        if i == 2 {\n            continue\n        }\n        if i == 5 {\n            break\n        }\n        print("Step:", i)\n    } til i >= 10\n    print("Done")\n}'
   },
   {
     label: "weak reference",
@@ -37,7 +37,7 @@ const EXAMPLES = [
   },
   {
     label: "input demo",
-    code: 'fn main() {\n    var name = input("Enter your name: ")\n    print("Welcome to Wyrm 1.0.0, " + name + "!")\n}'
+    code: 'fn main() {\n    var name = input("Enter your name: ")\n    print("Welcome to Wyrm, " + name + "!")\n}'
   }
 ];
 
