@@ -13,7 +13,7 @@ const EXAMPLES = [
   },
   {
     label: "std.json",
-    code: 'use std.json;\n\nfn main() {\n    var text = "{\\"language\\": \\"Wyrm\\", \\"version\\": 3.1, \\"fast\\": true}"\n    var obj = json_parse(text)\n    print("Language:", obj["language"])\n    print("Version:", obj["version"])\n    obj["author"] = "Neofilisoft"\n    print("Encoded JSON:", json_encode(obj))\n}'
+    code: 'use std.json;\n\nfn main() {\n    var text = "{\\"language\\": \\"Wyrm\\", \\"version\\": 1.0.0, \\"fast\\": true}"\n    var obj = json_parse(text)\n    print("Language:", obj["language"])\n    print("Version:", obj["version"])\n    obj["author"] = "Neofilisoft"\n    print("Encoded JSON:", json_encode(obj))\n}'
   },
   {
     label: "std.yaml",
@@ -25,7 +25,7 @@ const EXAMPLES = [
   },
   {
     label: "do/til loops",
-    code: 'fn main() {\n    var i = 0\n    print("--- Testing do ... til loop ---")\n    do {\n        i = i + 1\n        if i == 2 {\n            continue\n        }\n        if i == 5 {\n            break\n        }\n        print("Step:", i)\n    } til i >= 10\n    print("Done!")\n}'
+    code: 'fn main() {\n    var i = 0\n    print("Looping...")\n    do {\n        i = i + 1\n        if i == 2 {\n            continue\n        }\n        if i == 5 {\n            break\n        }\n        print("Step:", i)\n    } til i >= 10\n    print("Done!")\n}'
   },
   {
     label: "weak reference",
@@ -222,11 +222,11 @@ wyrm.runner.setup(_js_input_handler)
 `);
 
     statusEl.classList.add('ready');
-    statusText.textContent = 'พร้อมรัน (v3.2.1 Ready)';
+    statusText.textContent = 'พร้อมรัน (Ready)';
     inputEl.disabled = false;
     runBtn.disabled = false;
     outputEl.innerHTML = '';
-    appendLine('Wyrm v3.2.1 Runtime loaded successfully.', 'sys');
+    appendLine('Wyrm 1.0.0 Runtime loaded successfully.', 'sys');
 
     return pyodide;
   } catch (e) {
