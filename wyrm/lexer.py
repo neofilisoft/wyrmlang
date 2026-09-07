@@ -1,4 +1,4 @@
-"""Wyrm v3.1.0 lexer.
+"""Wyrm v3.2.0 lexer.
 
 Tokenizes Wyrm source into a flat token list. Mirrors the tokenizer behavior
 used by the self-hosted compiler (compiler/wyrmc.wyr): // line comments,
@@ -10,7 +10,7 @@ operators/punctuation including compound assignment, comparison ops, and type to
 KEYWORDS = {
     "use", "fn", "var", "dec", "owned", "arena", "struct", "self", "if", "elif", "else",
     "repeat", "do", "til", "unsafe", "return", "break", "continue",
-    "and", "or", "not", "true", "false", "null",
+    "and", "or", "not", "true", "false", "null", "weak",
 }
 
 # Longest-match-first operator table.

@@ -1,4 +1,4 @@
-"""Wyrm v3.1.0 parser: recursive-descent parser producing the AST in ast.py.
+"""Wyrm v3.2.0 parser: recursive-descent parser producing the AST in ast.py.
 
 Grammar mirrors compiler/wyrmc.wyr (self-hosted v3.1) with Structs & Methods,
 gradual type annotations, arena allocation, and complete operator set.
@@ -97,7 +97,11 @@ class Parser:
                 ftype = None
                 if self._check("COLON"):
                     self._advance()
-                    ftype = self._expect("IDENT").value
+                    if self._check("WEAK"):
+                        self._advance()
+                        ftype = "weak " + self._expect("IDENT").value
+                    else:
+                        ftype = self._expect("IDENT").value
                 fields.append(fname)
                 if ftype:
                     field_types[fname] = ftype
@@ -321,7 +325,7 @@ class Parser:
         return node
 
     def _unary(self):
-        if self._check("NOT") or (self._check("OP") and self._cur().value in ("!", "-", "+")):
+        if self._check("NOT") or (self._check("OP") and self._cur().value in ("!", "-", "+")) or self._check("WEAK"):
             op = self._advance().value
             operand = self._unary()
             return UnaryOp(op, operand)

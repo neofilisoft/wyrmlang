@@ -1,7 +1,7 @@
 const EXAMPLES = [
   {
     label: "hello",
-    code: 'fn main() {\n    print("Hello, Wyrm v3.1.0!")\n}'
+    code: 'fn main() {\n    print("Hello, Wyrm 1.0.0!")\n}'
   },
   {
     label: "structs & methods",
@@ -17,7 +17,7 @@ const EXAMPLES = [
   },
   {
     label: "std.yaml",
-    code: 'use std.yaml;\n\nfn main() {\n    var text = "project: Wyrm\\nversion: 3.1\\nmode: release\\n"\n    var cfg = yaml_parse(text)\n    print("Project:", cfg["project"])\n    print("Version:", cfg["version"])\n    print("Mode:", cfg["mode"])\n}'
+    code: 'use std.yaml;\n\nfn main() {\n    var text = "project: Wyrm\\nversion: 1.0.0\\nmode: release\\n"\n    var cfg = yaml_parse(text)\n    print("Project:", cfg["project"])\n    print("Version:", cfg["version"])\n    print("Mode:", cfg["mode"])\n}'
   },
   {
     label: "std.collections",
@@ -28,12 +28,16 @@ const EXAMPLES = [
     code: 'fn main() {\n    var i = 0\n    print("--- Testing do ... til loop ---")\n    do {\n        i = i + 1\n        if i == 2 {\n            continue\n        }\n        if i == 5 {\n            break\n        }\n        print("Step:", i)\n    } til i >= 10\n    print("Done!")\n}'
   },
   {
+    label: "weak reference",
+    code: 'struct Node {\n    val: i32,\n    parent: weak Node\n}\n\nfn main() {\n    var parent = Node(100, null)\n    var child = Node(200, weak parent)\n    print("Child parent val:", child.parent.val)\n    print("Weak ref type:", type(weak parent))\n    print("Lock promotion:", lock(child.parent).val)\n}'
+  },
+  {
     label: "arena memory",
     code: 'fn main() {\n    arena buf(1024)\n    var chunk1 = buf.alloc(64)\n    var chunk2 = buf.alloc(128)\n    print("Allocated 64 and 128 bytes from arena")\n    buf.reset()\n    print("Arena reset successfully for bulk reuse")\n}'
   },
   {
     label: "input demo",
-    code: 'fn main() {\n    var name = input("Enter your name: ")\n    print("Welcome to Wyrm v3.1.0, " + name + "!")\n}'
+    code: 'fn main() {\n    var name = input("Enter your name: ")\n    print("Welcome to Wyrm 1.0.0, " + name + "!")\n}'
   }
 ];
 
@@ -218,11 +222,11 @@ wyrm.runner.setup(_js_input_handler)
 `);
 
     statusEl.classList.add('ready');
-    statusText.textContent = 'พร้อมรัน (v3.1.0 Ready)';
+    statusText.textContent = 'พร้อมรัน (v3.2.1 Ready)';
     inputEl.disabled = false;
     runBtn.disabled = false;
     outputEl.innerHTML = '';
-    appendLine('Wyrm v3.1.0 Runtime loaded successfully.', 'sys');
+    appendLine('Wyrm v3.2.1 Runtime loaded successfully.', 'sys');
 
     return pyodide;
   } catch (e) {

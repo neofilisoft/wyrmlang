@@ -1,4 +1,4 @@
-"""Wyrm v3.2.0 tree-walking interpreter.
+"""Wyrm v3.2.1 tree-walking interpreter.
 
 Designed to run inside Pyodide in the browser. Supports async input(),
 Structs & Methods, Gradual Static Typing annotations, Standard Library
@@ -8,6 +8,8 @@ modules (std.json, std.yaml, std.collections), and Arena memory allocators.
 import json
 import random
 import secrets
+import time
+import datetime
 from .ast import (
     Program, NumberLit, StringLit, BoolLit, NullLit, ArrayLit, Identifier,
     UnaryOp, BinaryOp, LogicalOp, Assign, CompoundAssign, Index, Slice, IndexAssign,
@@ -51,6 +53,47 @@ class WyrmStructDef:
         self.methods = {m.name: m for m in methods}
         self.field_types = field_types or {}
 
+
+class WyrmWeakRef:
+    __slots__ = ("_target_ref", "_obj")
+
+    def __init__(self, target):
+        import weakref
+        if isinstance(target, WyrmWeakRef):
+            self._target_ref = target._target_ref
+            self._obj = target._obj
+        elif isinstance(target, WyrmStructInstance):
+            try:
+                self._target_ref = weakref.ref(target)
+                self._obj = None
+            except TypeError:
+                self._target_ref = None
+                self._obj = target
+        else:
+            self._target_ref = None
+            self._obj = None
+
+    def lock(self):
+        if self._target_ref is not None:
+            return self._target_ref()
+        return self._obj
+
+    def get_field(self, name):
+        obj = self.lock()
+        if obj is None:
+            return None
+        return obj.get_field(name)
+
+    def set_field(self, name, value):
+        obj = self.lock()
+        if obj is not None:
+            obj.set_field(name, value)
+
+    def __repr__(self):
+        obj = self.lock()
+        if obj is None:
+            return "weak(null)"
+        return f"weak({repr(obj)})"
 
 class WyrmStructInstance:
     __slots__ = ("struct_def", "fields")
@@ -109,6 +152,8 @@ def wyrm_type_name(v):
         return "array"
     if isinstance(v, dict):
         return "map"
+    if isinstance(v, WyrmWeakRef):
+        return "weak_ref"
     if isinstance(v, WyrmStructInstance):
         return v.struct_def.name
     if isinstance(v, WyrmFunction):
@@ -289,6 +334,18 @@ class Interpreter:
             self.globals.declare("rand_trng_int", lambda args: (int(args[0]) + secrets.randbelow(int(args[1]) - int(args[0]) + 1)) if int(args[1]) >= int(args[0]) else (int(args[1]) + secrets.randbelow(int(args[0]) - int(args[1]) + 1)))
             self.globals.declare("rand_reseed_trng", lambda args: random.seed(secrets.randbits(64)))
 
+        elif mod_name == "std.time":
+            self.globals.declare("time_now", lambda args: time.time())
+            self.globals.declare("time_unix", lambda args: int(time.time()))
+            self.globals.declare("time_unix_ms", lambda args: int(time.time() * 1000.0))
+            self.globals.declare("time_monotonic", lambda args: time.monotonic())
+            self.globals.declare("time_monotonic_ms", lambda args: time.monotonic() * 1000.0)
+            self.globals.declare("time_monotonic_ns", lambda args: time.monotonic_ns())
+            self.globals.declare("time_sleep", lambda args: time.sleep(float(args[0]) / 1000.0) if (args and args[0] is not None) else None)
+            self.globals.declare("time_diff", lambda args: float(args[1]) - float(args[0]))
+            self.globals.declare("time_format", lambda args: datetime.datetime.fromtimestamp(float(args[0]) if (args and args[0] is not None) else time.time(), tz=datetime.timezone.utc).strftime(str(args[1]) if (len(args) > 1 and args[1] is not None and str(args[1]) != "") else "%Y-%m-%d %H:%M:%S"))
+            self.globals.declare("time_format_local", lambda args: datetime.datetime.fromtimestamp(float(args[0]) if (args and args[0] is not None) else time.time()).strftime(str(args[1]) if (len(args) > 1 and args[1] is not None and str(args[1]) != "") else "%Y-%m-%d %H:%M:%S"))
+
         elif mod_name in ("std.sdl", "std.ffi", "std.thread"):
             # Browser sandbox stubs to avoid runtime crashes
             pass
@@ -348,7 +405,7 @@ class Interpreter:
                     obj[int(idx)] = result
             elif isinstance(node.target, MemberAccess):
                 obj = await self.eval(node.target.obj, env)
-                if isinstance(obj, WyrmStructInstance):
+                if isinstance(obj, (WyrmStructInstance, WyrmWeakRef)):
                     obj.set_field(node.target.member, result)
                 elif isinstance(obj, dict):
                     obj[node.target.member] = result
@@ -456,6 +513,8 @@ class Interpreter:
 
         if t is UnaryOp:
             val = await self.eval(node.operand, env)
+            if node.op == "weak":
+                return WyrmWeakRef(val)
             if node.op in ("!", "not"):
                 return not is_truthy(val)
             if node.op == "-":
@@ -495,6 +554,8 @@ class Interpreter:
 
         if t is MemberAccess:
             obj = await self.eval(node.obj, env)
+            if isinstance(obj, WyrmWeakRef):
+                return obj.get_field(node.member)
             if isinstance(obj, WyrmStructInstance):
                 return obj.get_field(node.member)
             if isinstance(obj, dict):
@@ -665,6 +726,16 @@ def _b_float(args):
 def _b_type(args):
     return wyrm_type_name(args[0])
 
+def _b_weak(args):
+    return WyrmWeakRef(args[0]) if args else None
+
+
+def _b_lock(args):
+    if args and isinstance(args[0], WyrmWeakRef):
+        return args[0].lock()
+    return args[0] if args else None
+
+
 
 def _b_abs(args):
     return abs(args[0])
@@ -818,6 +889,8 @@ BUILTINS = {
     "int": _b_int,
     "float": _b_float,
     "type": _b_type,
+    "weak": _b_weak,
+    "lock": _b_lock,
     "abs": _b_abs,
     "max": _b_max,
     "min": _b_min,
