@@ -1,4 +1,4 @@
-"""AST node classes for the Wyrm v3.2.0 interpreter."""
+"""AST node classes for the Wyrm v1.0.0 interpreter."""
 
 
 class Node:

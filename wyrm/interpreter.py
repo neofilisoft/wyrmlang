@@ -1,4 +1,4 @@
-"""Wyrm v3.2.1 tree-walking interpreter.
+"""Wyrm v1.0.0 tree-walking interpreter.
 
 Designed to run inside Pyodide in the browser. Supports async input(),
 Structs & Methods, Gradual Static Typing annotations, Standard Library
@@ -153,7 +153,7 @@ def wyrm_type_name(v):
     if isinstance(v, dict):
         return "map"
     if isinstance(v, WyrmWeakRef):
-        return "weak_ref"
+        return "weak ref"
     if isinstance(v, WyrmStructInstance):
         return v.struct_def.name
     if isinstance(v, WyrmFunction):

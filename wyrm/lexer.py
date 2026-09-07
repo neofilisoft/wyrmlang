@@ -1,4 +1,4 @@
-"""Wyrm v3.2.0 lexer.
+"""Wyrm v1.0.0 lexer.
 
 Tokenizes Wyrm source into a flat token list. Mirrors the tokenizer behavior
 used by the self-hosted compiler (compiler/wyrmc.wyr): // line comments,

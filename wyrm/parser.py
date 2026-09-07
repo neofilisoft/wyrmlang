@@ -1,6 +1,6 @@
-"""Wyrm v3.2.0 parser: recursive-descent parser producing the AST in ast.py.
+"""Wyrm v1.0.0 parser: recursive-descent parser producing the AST in ast.py.
 
-Grammar mirrors compiler/wyrmc.wyr (self-hosted v3.1) with Structs & Methods,
+Grammar mirrors compiler/wyrmc.wyr (self-hosted) with Structs & Methods,
 gradual type annotations, arena allocation, and complete operator set.
 """
 
